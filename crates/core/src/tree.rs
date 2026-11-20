@@ -52,6 +52,14 @@ pub struct Meta {
     pub xattrs: Option<Vec<Xattr>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub change: Option<Change>,
+    /// Windows attributes kept (FORMAT-v2-windows.md 4.2), sorted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub win_attrs: Option<Vec<String>>,
+    /// Creation time, split like `mtime` (FORMAT-v2-windows.md 4.2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub btime: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub btime_nanos: Option<u32>,
 }
 
 impl Meta {
@@ -90,6 +98,9 @@ pub enum EntryKind {
     Symlink {
         /// Raw bytes of the target.
         target: Vec<u8>,
+        /// `file`, `dir` or `junction` for links made on Windows
+        /// (FORMAT-v2-windows.md 4.3); `None` for links made on Linux.
+        link: Option<String>,
     },
     /// A type this reader does not know (FORMAT-v2.md 4.7).
     Unknown(String),
@@ -128,9 +139,12 @@ impl Entry {
                     map.insert("mount".into(), json!(true));
                 }
             }
-            EntryKind::Symlink { target } => {
+            EntryKind::Symlink { target, link } => {
                 map.insert("type".into(), json!("symlink"));
                 put_bytes(&mut map, "target", "targetBytes", target);
+                if let Some(link) = link {
+                    map.insert("link".into(), json!(link));
+                }
             }
             EntryKind::Unknown(_) => unreachable!("unknown entries are never written"),
         }
@@ -154,6 +168,7 @@ impl Entry {
             },
             "symlink" => EntryKind::Symlink {
                 target: take_bytes(&map, "target", "targetBytes")?.ok_or_else(|| bad("symlink without target"))?,
+                link: map.get("link").and_then(Value::as_str).map(str::to_owned),
             },
             other => EntryKind::Unknown(other.to_owned()),
         };
@@ -234,7 +249,7 @@ mod tests {
             Entry { name: b"run.sh".to_vec(), kind: EntryKind::File { size: 0, content: vec![] }, meta },
             Entry {
                 name: vec![b'a', 0xff],
-                kind: EntryKind::Symlink { target: vec![0xfe, b'x'] },
+                kind: EntryKind::Symlink { target: vec![0xfe, b'x'], link: None },
                 meta: Meta::default(),
             },
             Entry {

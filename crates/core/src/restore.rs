@@ -362,7 +362,7 @@ impl<D: Destination + 'static> Restorer<'_, '_, D> {
                     }
                     self.restore_dir(dir, entry, subtree, &child)?
                 }
-                EntryKind::Symlink { target } => self.restore_symlink(dir, entry, target)?,
+                EntryKind::Symlink { target, .. } => self.restore_symlink(dir, entry, target)?,
                 EntryKind::Unknown(_) => self.report.unknown += 1,
             }
             if !matches!(entry.kind, EntryKind::File { .. }) {

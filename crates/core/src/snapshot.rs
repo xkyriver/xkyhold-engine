@@ -16,6 +16,18 @@ pub struct Home {
     pub gid: u32,
 }
 
+/// Where a Windows backup came from (FORMAT-v2-windows.md 3.1). Windows
+/// snapshots carry this instead of `home`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Origin {
+    /// `"windows"`.
+    pub os: String,
+    /// The user folder as Windows writes it, with `\`.
+    pub path: String,
+    pub user: String,
+    pub sid: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Source {
     pub kind: String,
@@ -64,6 +76,15 @@ pub struct Stats {
     pub symlinks: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mounts: Option<u64>,
+    /// Files held by another program (FORMAT-v2-windows.md 3.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked: Option<u64>,
+    /// Online-only cloud files, never read (FORMAT-v2-windows.md 3.3).
+    #[serde(rename = "cloudOnly", skip_serializing_if = "Option::is_none")]
+    pub cloud_only: Option<u64>,
+    /// Names that are not valid UTF-16 (FORMAT-v2-windows.md 4.1).
+    #[serde(rename = "badNames", skip_serializing_if = "Option::is_none")]
+    pub bad_names: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +97,8 @@ pub struct Snapshot {
     pub device: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub home: Option<Home>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
     pub roots: Vec<Root>,
     pub stats: Stats,
     pub parent: Option<String>,

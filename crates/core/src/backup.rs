@@ -340,7 +340,11 @@ impl<D: Destination + 'static> Walker<'_, '_, D> {
                     };
                     self.progress.symlinks += 1;
                     let meta = self.meta(&st, false);
-                    Entry { name: name.clone(), kind: EntryKind::Symlink { target: target.into_bytes() }, meta }
+                    Entry {
+                        name: name.clone(),
+                        kind: EntryKind::Symlink { target: target.into_bytes(), link: None },
+                        meta,
+                    }
                 }
                 _ => {
                     self.progress.special += 1;
@@ -576,6 +580,9 @@ pub fn backup<D: Destination + 'static>(
             special: Some(p.special),
             symlinks: Some(p.symlinks),
             mounts: Some(p.mounts),
+            locked: None,
+            cloud_only: None,
+            bad_names: None,
         };
         let uid = rustix::process::geteuid().as_raw();
         let gid = rustix::process::getegid().as_raw();
@@ -586,6 +593,7 @@ pub fn backup<D: Destination + 'static>(
             time: options.time.clone(),
             device: options.device.clone(),
             home: Some(Home { path: lossy(&walker.home), user, uid, gid }),
+            origin: None,
             roots: vec![Root {
                 name: HOME_ROOT.into(),
                 tree,
