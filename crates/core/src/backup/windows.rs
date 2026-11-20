@@ -12,7 +12,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{ErrorKind, Read};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{BackupOptions, HOME_ROOT, Issue, IssueKind, Progress, Selection, lossy};
@@ -22,7 +22,7 @@ use crate::repo::Repository;
 use crate::rules::{CACHEDIR_SIGNATURE, Matcher, Verdict};
 use crate::snapshot::{Origin, Root, Snapshot, Source, Stats};
 use crate::tree::{Change, Entry, EntryKind, Meta, split_ns};
-use crate::win::{FileInfo, current_sid, file_info, is_elevated};
+use crate::win::{FileInfo, current_sid, file_info, is_elevated, verbatim};
 use crate::{Error, Result};
 
 // File attributes (winnt.h).
@@ -417,17 +417,6 @@ impl<D: Destination + 'static> Walker<'_, '_, D> {
         }
         Ok((content, total))
     }
-}
-
-/// `\\?\` in front of an absolute path, so long paths work everywhere.
-fn verbatim(path: &Path) -> PathBuf {
-    let text = path.as_os_str();
-    if text.to_string_lossy().starts_with(r"\\?\") {
-        return path.to_path_buf();
-    }
-    let mut out = std::ffi::OsString::from(r"\\?\");
-    out.push(text);
-    PathBuf::from(out)
 }
 
 /// Backs up the user folder (or the chosen items inside it) and writes a

@@ -23,7 +23,7 @@ use crate::destination::Destination;
 use crate::pack::BlobType;
 use crate::repo::Repository;
 use crate::tree::{Entry, EntryKind, Meta, valid_name};
-use crate::win::{is_elevated, make_junction, set_attributes};
+use crate::win::{is_elevated, make_junction, set_attributes, verbatim};
 use crate::{Error, Result};
 
 const FILE_THREADS: usize = 6;
@@ -450,8 +450,11 @@ pub fn restore<D: Destination + 'static>(
     if !std::fs::metadata(target)?.is_dir() {
         return Err(Error::Io(std::io::Error::new(std::io::ErrorKind::NotADirectory, "not a folder")));
     }
+    // `\\?\` so that every path below works past 260 characters, also in
+    // the Windows calls the standard library does not wrap.
+    let target = verbatim(&std::path::absolute(target)?);
     let mut restorer = Restorer { repo, options, report: RestoreReport::default(), on_progress, links: Vec::new() };
-    restorer.restore_entries(target, entries, "")?;
+    restorer.restore_entries(&target, entries, "")?;
     restorer.restore_links()?;
     Ok(restorer.report)
 }

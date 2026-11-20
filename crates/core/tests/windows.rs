@@ -222,3 +222,19 @@ fn real_online_only_files_and_app_aliases() {
     assert!(last.issues.iter().any(|i| i.kind == IssueKind::CloudOnly && i.path.ends_with("cloud.bin")));
     assert_ne!(attributes(&cloud) & RECALL_ON_DATA_ACCESS, 0, "still online-only: nothing was downloaded");
 }
+
+#[test]
+fn paths_longer_than_260_characters_round_trip() {
+    let f = fixture();
+    let deep: PathBuf = (0..8).map(|i| format!("folder-with-a-long-name-number-{i:02}-xxxxxxxxxx")).collect();
+    let dir = f.home.join(&deep);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("deep file.txt"), b"far down").unwrap();
+    assert!(dir.join("deep file.txt").as_os_str().len() > 300);
+    let mut repo = new_repo();
+    let snap = backup(&mut repo, &f.home, options("2026-11-20T12:00:00Z", None), &mut |_| {}).unwrap();
+    assert_eq!(snap.stats.skipped, 0);
+    let entries = repo.load_tree(&snap.roots[0].tree).unwrap();
+    restore(&repo, &entries, &f.out, &RestoreOptions::default(), &mut |_| {}).unwrap();
+    assert_eq!(std::fs::read(f.out.join(&deep).join("deep file.txt")).unwrap(), b"far down");
+}

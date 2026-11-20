@@ -230,3 +230,14 @@ pub fn make_junction(link: &std::path::Path, target: &str) -> io::Result<()> {
     };
     if ok == 0 { Err(io::Error::last_os_error()) } else { Ok(()) }
 }
+
+/// `\\?\` in front of an absolute path, so long paths work everywhere.
+pub fn verbatim(path: &std::path::Path) -> std::path::PathBuf {
+    let text = path.as_os_str();
+    if text.to_string_lossy().starts_with(r"\\?\") {
+        return path.to_path_buf();
+    }
+    let mut out = std::ffi::OsString::from(r"\\?\");
+    out.push(text);
+    std::path::PathBuf::from(out)
+}
