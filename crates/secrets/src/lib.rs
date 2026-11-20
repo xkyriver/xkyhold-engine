@@ -1,16 +1,20 @@
-//! Secrets kept in the Secret Service (GNOME Keyring, KWallet): the
+//! Secrets kept in the system keyring: the Secret Service (GNOME Keyring,
+//! KWallet) on Linux, the Credential Manager on Windows. They are the
 //! repository master key, so automatic backups need no password, and the
-//! Google refresh token (PLAN.md 4.5). The password itself is never stored.
+//! Google refresh token. The password itself is never stored.
 //!
-//! Without a Secret Service, nothing is stored: the app asks for the
-//! password at each backup and automatic backup is unavailable.
+//! Without a keyring, nothing is stored: the app asks for the password at
+//! each backup and automatic backup is unavailable.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use keyring_core::{Entry, Error as KeyringError};
 
+#[cfg(not(windows))]
 const SERVICE: &str = "xkyhold-lx";
+#[cfg(windows)]
+const SERVICE: &str = "xkyhold-wd";
 
 #[derive(Debug)]
 pub struct SecretsError(pub String);
@@ -41,15 +45,22 @@ pub fn google_refresh(account: &str) -> String {
     format!("google-refresh:{account}")
 }
 
-/// The desktop's Secret Service over D-Bus.
+/// The system keyring: the desktop's Secret Service over D-Bus on Linux,
+/// the Credential Manager on Windows. The name is kept from XkyHold-lx.
 pub struct SecretService;
 
+/// The same keyring under a name that fits every system.
+pub type SystemKeyring = SecretService;
+
 impl SecretService {
-    /// Connects to the Secret Service; fails if there is none. A session
+    /// Connects to the keyring; fails if there is none. On Linux a session
     /// bus alone is not enough: a lookup must answer (a fresh user started
     /// with `machinectl shell` has the bus and no keyring daemon).
     pub fn connect() -> Result<Self> {
+        #[cfg(not(windows))]
         let store = zbus_secret_service_keyring_store::Store::new().map_err(|e| SecretsError(e.to_string()))?;
+        #[cfg(windows)]
+        let store = windows_native_keyring_store::Store::new().map_err(|e| SecretsError(e.to_string()))?;
         keyring_core::set_default_store(store);
         let service = SecretService;
         service.get("probe")?;
@@ -99,5 +110,23 @@ impl SecretStore for MemorySecrets {
     fn delete(&self, key: &str) -> Result<()> {
         self.0.lock().unwrap().remove(key);
         Ok(())
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    /// Writes, reads back and deletes one entry in the real Credential
+    /// Manager of the user running the test, under a test-only key.
+    #[test]
+    fn credential_manager_round_trip() {
+        let keyring = SystemKeyring::connect().unwrap();
+        let key = "test-only:secrets-round-trip";
+        keyring.set(key, &[0, 1, 2, 255]).unwrap();
+        assert_eq!(keyring.get(key).unwrap(), Some(vec![0, 1, 2, 255]));
+        keyring.delete(key).unwrap();
+        assert_eq!(keyring.get(key).unwrap(), None);
+        keyring.delete(key).unwrap();
     }
 }
