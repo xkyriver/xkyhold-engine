@@ -27,6 +27,9 @@ zeroize.workspace = true
 rustix.workspace = true
 uzers.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 hex.workspace = true

@@ -1,6 +1,9 @@
 //! The Rust half of the cross round trip with the TypeScript engine. Run
 //! through `scripts/cross-ts.sh`, which sets `CROSS_DIR`.
 
+// Builds its trees with Unix calls.
+#![cfg(unix)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::os::unix::fs::symlink;
 

@@ -2,6 +2,9 @@
 //! only. The criterion of Phase 2: the restored tree is identical in
 //! content, permissions, links, times and extended attributes.
 
+// Builds its trees with Unix calls.
+#![cfg(unix)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;

@@ -19,5 +19,7 @@ pub mod rules;
 pub mod snapshot;
 pub mod time;
 pub mod tree;
+#[cfg(windows)]
+mod win;
 
 pub use error::{Error, Result};

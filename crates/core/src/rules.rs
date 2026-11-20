@@ -56,12 +56,31 @@ pub struct Exclusions {
 }
 
 /// Always left out, whatever the settings.
+#[cfg(not(windows))]
 pub const DEFAULTS: &[(&str, &[&str])] = &[
     ("cache", &[".cache"]),
     ("trash", &[".local/share/Trash"]),
     // The window's web view keeps its data under the app identifier.
     ("app-state", &[".cache/xkyhold-lx", ".local/state/xkyhold-lx", ".local/share/com.xkyriver.xkyhold-lx"]),
 ];
+
+/// Always left out on Windows (FORMAT-v2-windows.md 3.4).
+#[cfg(windows)]
+pub const DEFAULTS: &[(&str, &[&str])] = &[
+    ("temp", &["AppData/Local/Temp"]),
+    (
+        "registry-hives",
+        &["NTUSER.DAT*", "ntuser.dat.LOG*", "ntuser.ini", "AppData/Local/Microsoft/Windows/UsrClass.dat*"],
+    ),
+    // The window's web view keeps its data under the app identifier.
+    ("app-state", &["AppData/Local/xkyhold-wd", "AppData/Roaming/xkyhold-wd", "AppData/Local/com.xkyriver.xkyhold-wd"]),
+];
+
+/// Windows matches names without regard to case (FORMAT-v2-windows.md 3.4).
+/// ASCII folding only, which covers the default and preset patterns.
+fn fold(bytes: &[u8]) -> Vec<u8> {
+    if cfg!(windows) { bytes.to_ascii_lowercase() } else { bytes.to_vec() }
+}
 
 /// Whether a path is kept or left out.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +122,11 @@ impl Matcher {
             });
         }
         rules.push(Rule { id: Some("cachedir-tag".into()), ..rule("default") });
-        rules.push(Rule { id: Some("other-file-systems".into()), ..rule("default") });
+        if cfg!(windows) {
+            rules.push(Rule { id: Some("cloud-only".into()), ..rule("default") });
+        } else {
+            rules.push(Rule { id: Some("other-file-systems".into()), ..rule("default") });
+        }
         for preset in PRESETS.iter().filter(|p| ex.presets.iter().any(|id| id == p.id)) {
             let patterns: Vec<String> = preset.patterns.iter().map(|p| (*p).to_owned()).collect();
             match preset.beside {
@@ -122,6 +145,9 @@ impl Matcher {
         for path in &ex.cross_mounts {
             rules.push(path_rule("cross-mount", path));
         }
+        let globs = globs.iter().map(|g| fold(g)).collect();
+        let beside = beside.iter().map(|(g, f)| (fold(g), f.clone())).collect();
+        let paths = paths.iter().map(|p| fold(p)).collect();
         Self { globs, beside, paths, cross: ex.cross_mounts.clone(), rules }
     }
 
@@ -132,6 +158,7 @@ impl Matcher {
 
     /// Is this path (relative to home) left out by a path or pattern rule?
     pub fn check(&self, path: &[u8]) -> Verdict {
+        let path = &fold(path)[..];
         if self.paths.iter().any(|p| p == path) || self.globs.iter().any(|g| glob_match(g, path)) {
             Verdict::LeaveOut
         } else {
@@ -144,7 +171,7 @@ impl Matcher {
     /// has a regular file called `name`.
     pub fn check_beside(&self, path: &[u8], has_sibling: impl Fn(&[u8]) -> bool) -> Verdict {
         if self.check(path) == Verdict::LeaveOut
-            || self.beside.iter().any(|(g, file)| glob_match(g, path) && has_sibling(file))
+            || self.beside.iter().any(|(g, file)| glob_match(g, &fold(path)) && has_sibling(file))
         {
             Verdict::LeaveOut
         } else {
@@ -222,7 +249,14 @@ mod tests {
             assert!(kinds.iter().any(|x| x == k), "{k}");
         }
         assert_eq!(m.check(b"Downloads"), Verdict::LeaveOut);
-        assert_eq!(m.check(b".cache"), Verdict::LeaveOut);
+        if cfg!(windows) {
+            // Windows defaults, matched without regard to case.
+            assert_eq!(m.check(b"AppData/Local/Temp"), Verdict::LeaveOut);
+            assert_eq!(m.check(b"appdata/local/temp"), Verdict::LeaveOut);
+            assert_eq!(m.check(b"NTUSER.DAT"), Verdict::LeaveOut);
+        } else {
+            assert_eq!(m.check(b".cache"), Verdict::LeaveOut);
+        }
         assert_eq!(m.check(b"code/x/node_modules"), Verdict::LeaveOut);
         assert_eq!(m.check(b"Documents"), Verdict::Keep);
         // A Rust build folder is one with a Cargo.toml beside it.

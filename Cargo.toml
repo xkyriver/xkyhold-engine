@@ -27,6 +27,7 @@ unicode-normalization = "0.1"
 zeroize = { version = "1", features = ["derive"] }
 rustix = { version = "1", features = ["fs", "process"] }
 uzers = "0.12"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Threading"] }
 tempfile = "3"
 
 [workspace.lints.rust]

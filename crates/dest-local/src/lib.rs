@@ -27,8 +27,16 @@ fn check_name(name: &str) -> Result<()> {
     if ok { Ok(()) } else { Err(Error::Format(format!("invalid object name {name:?}"))) }
 }
 
+#[cfg(not(windows))]
 fn sync_dir(path: &Path) -> Result<()> {
     File::open(path)?.sync_all()?;
+    Ok(())
+}
+
+/// Windows cannot flush a folder; the rename of a flushed file stands in
+/// for it (FORMAT-v2-windows.md 7).
+#[cfg(windows)]
+fn sync_dir(_path: &Path) -> Result<()> {
     Ok(())
 }
 

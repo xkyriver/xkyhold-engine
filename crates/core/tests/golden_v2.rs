@@ -5,6 +5,9 @@
 //! refuses to overwrite it. If `restores_golden_v2` fails, the change under
 //! test would make existing version 2 backups unreadable.
 
+// Builds its trees with Unix calls.
+#![cfg(unix)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::{CString, OsStr};
 use std::os::unix::ffi::OsStrExt;

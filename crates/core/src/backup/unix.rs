@@ -1,11 +1,11 @@
-//! Backup of the home folder (FORMAT.md 10.1, FORMAT-v2.md 4 and 5).
+//! Backup on Linux and other Unix systems.
 //!
 //! The walk goes through file descriptors: every folder is opened relative
 //! to its parent with `O_NOFOLLOW`, so a symbolic link is never followed,
 //! even if a folder is swapped for a link while the backup runs. Nothing
 //! is ever written to the source.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::io::Read;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -13,94 +13,18 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use super::{BackupOptions, HOME_ROOT, Progress, Selection, lossy};
+
 use rustix::fs::{AtFlags, Dir, FileType, Mode, OFlags, Stat, fstat, openat, readlinkat, statat};
 
 use crate::bytes::to_base64;
-use crate::crypto::CHUNK_SIZE;
 use crate::destination::Destination;
 use crate::pack::BlobType;
 use crate::repo::Repository;
-use crate::rules::{CACHEDIR_SIGNATURE, Exclusions, Matcher, Verdict};
+use crate::rules::{CACHEDIR_SIGNATURE, Matcher, Verdict};
 use crate::snapshot::{Home, Root, Snapshot, Source, Stats};
-use crate::tree::{Change, Entry, EntryKind, Meta, Xattr, valid_name};
+use crate::tree::{Change, Entry, EntryKind, Meta, Xattr};
 use crate::{Error, Result};
-
-/// The root name XkyHold-lx gives the home folder in a snapshot.
-pub const HOME_ROOT: &str = "home";
-
-#[derive(Debug, Clone, Default)]
-pub struct Progress {
-    pub files: u64,
-    pub bytes: u64,
-    pub skipped: u64,
-    pub changed: u64,
-    pub special: u64,
-    pub symlinks: u64,
-    pub mounts: u64,
-    /// Files whose content was read (new or changed).
-    pub files_read: u64,
-    /// Path being read, relative to the home folder.
-    pub current: String,
-}
-
-pub struct BackupOptions<'a> {
-    pub device: String,
-    /// Time of the snapshot, ISO 8601.
-    pub time: String,
-    /// The previous snapshot; unchanged files are taken from it unread.
-    pub parent: Option<&'a Snapshot>,
-    pub exclusions: Exclusions,
-    /// Paths inside the home folder to back up; `None` is the whole folder.
-    pub selection: Option<Vec<Vec<u8>>>,
-    pub chunk_size: usize,
-    /// Absolute paths of mount points; `None` reads `/proc/self/mountinfo`.
-    pub mount_points: Option<HashSet<Vec<u8>>>,
-    pub cancel: Option<&'a AtomicBool>,
-}
-
-impl BackupOptions<'_> {
-    pub fn new(device: String, time: String) -> Self {
-        Self {
-            device,
-            time,
-            parent: None,
-            exclusions: Exclusions::default(),
-            selection: None,
-            chunk_size: CHUNK_SIZE as usize,
-            mount_points: None,
-            cancel: None,
-        }
-    }
-}
-
-/// The chosen items, as a tree of names. A `whole` node takes everything
-/// below it.
-#[derive(Default, Debug)]
-struct Selection {
-    whole: bool,
-    children: BTreeMap<Vec<u8>, Selection>,
-}
-
-impl Selection {
-    fn build(paths: &[Vec<u8>]) -> Result<Self> {
-        let mut root = Selection::default();
-        for path in paths {
-            if path.is_empty() {
-                root.whole = true;
-                continue;
-            }
-            let mut node = &mut root;
-            for name in path.split(|&b| b == b'/') {
-                if !valid_name(name) {
-                    return Err(Error::OutsideHome(String::from_utf8_lossy(path).into_owned()));
-                }
-                node = node.children.entry(name.to_vec()).or_default();
-            }
-            node.whole = true;
-        }
-        Ok(root)
-    }
-}
 
 fn is_root() -> bool {
     rustix::process::geteuid().is_root()
@@ -511,10 +435,6 @@ impl<D: Destination + 'static> Walker<'_, '_, D> {
         }
         Ok((content, total))
     }
-}
-
-fn lossy(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
 }
 
 /// Backs up the home folder (or the chosen items inside it) and writes a
