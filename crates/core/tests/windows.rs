@@ -200,3 +200,25 @@ fn names_from_linux_are_made_safe_and_listed() {
     assert_eq!(std::fs::read(f.out.join("read (2).ME")).unwrap(), b"read.ME");
     assert_eq!(std::fs::read(f.out.join("Read.me")).unwrap(), b"Read.me");
 }
+
+/// Against the real user folder of a Windows test machine, read only: an
+/// online-only OneDrive file is counted and never downloaded, and app
+/// execution aliases are counted as special (FORMAT-v2-windows.md 9). Needs
+/// `OneDrive/XkyHold-wd probe/cloud.bin` made online-only beforehand.
+#[test]
+#[ignore = "needs a real OneDrive folder with an online-only test file"]
+fn real_online_only_files_and_app_aliases() {
+    const RECALL_ON_DATA_ACCESS: u32 = 0x40_0000;
+    let home = PathBuf::from(std::env::var("USERPROFILE").unwrap());
+    let cloud = home.join("OneDrive/XkyHold-wd probe/cloud.bin");
+    assert_ne!(attributes(&cloud) & RECALL_ON_DATA_ACCESS, 0, "make cloud.bin online-only first");
+    let mut repo = new_repo();
+    let mut o = options("2026-11-20T12:00:00Z", None);
+    o.selection = Some(vec![b"OneDrive/XkyHold-wd probe".to_vec(), b"AppData/Local/Microsoft/WindowsApps".to_vec()]);
+    let mut last = Progress::default();
+    let snap = backup(&mut repo, &home, o, &mut |p| last = p.clone()).unwrap();
+    assert_eq!(snap.stats.cloud_only, Some(1));
+    assert!(snap.stats.special.unwrap() >= 1, "app execution aliases");
+    assert!(last.issues.iter().any(|i| i.kind == IssueKind::CloudOnly && i.path.ends_with("cloud.bin")));
+    assert_ne!(attributes(&cloud) & RECALL_ON_DATA_ACCESS, 0, "still online-only: nothing was downloaded");
+}
