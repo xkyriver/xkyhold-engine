@@ -23,6 +23,7 @@ impl Preset {
     }
 }
 
+#[cfg(not(windows))]
 pub const PRESETS: &[Preset] = &[
     Preset::new("node-modules", &["**/node_modules"]),
     Preset { id: "rust-target", patterns: &["**/target"], beside: Some("Cargo.toml") },
@@ -36,6 +37,35 @@ pub const PRESETS: &[Preset] = &[
     Preset::new("containers", &[".local/share/containers"]),
     Preset::new("steam", &[".local/share/Steam", ".steam"]),
     Preset::new("vm-images", &["**/*.qcow2", "**/*.vdi", "**/*.vmdk", ".local/share/libvirt/images"]),
+    Preset::new("downloads", &["Downloads"]),
+];
+
+/// The suggestions on Windows (XkyHold-wd PLAN.md 4.6), relative to the
+/// user folder and matched without regard to case. Ids shared with Linux
+/// mean the same thing.
+#[cfg(windows)]
+pub const PRESETS: &[Preset] = &[
+    Preset::new("node-modules", &["**/node_modules"]),
+    Preset { id: "rust-target", patterns: &["**/target"], beside: Some("Cargo.toml") },
+    Preset { id: "maven-target", patterns: &["**/target"], beside: Some("pom.xml") },
+    Preset::new("python-venv", &["**/.venv", "**/venv"]),
+    Preset::new(
+        "browser-caches",
+        &[
+            "AppData/Local/Google/Chrome/User Data/*/Cache",
+            "AppData/Local/Google/Chrome/User Data/*/Code Cache",
+            "AppData/Local/Microsoft/Edge/User Data/*/Cache",
+            "AppData/Local/Microsoft/Edge/User Data/*/Code Cache",
+            "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/Cache",
+            "AppData/Local/Mozilla/Firefox/Profiles/*/cache2",
+        ],
+    ),
+    Preset::new("app-caches", &["AppData/Local/Packages/*/LocalCache", "AppData/Local/Microsoft/Windows/INetCache"]),
+    Preset::new("containers", &["AppData/Local/Docker"]),
+    // Before vm-images, which would also match them: each item counts once.
+    Preset::new("wsl-disks", &["AppData/Local/Packages/*/LocalState/ext4.vhdx", "AppData/Local/wsl/*/ext4.vhdx"]),
+    Preset::new("steam", &["**/SteamLibrary"]),
+    Preset::new("vm-images", &["**/*.vhdx", "**/*.vhd", "**/*.vdi", "**/*.vmdk", "**/*.qcow2"]),
     Preset::new("downloads", &["Downloads"]),
 ];
 
@@ -271,5 +301,29 @@ mod tests {
         assert_eq!(maven.check_beside(b"work/svc/target", |f| f == b"pom.xml"), Verdict::LeaveOut);
         assert_eq!(maven.check_beside(b"code/app/target", |f| f == b"Cargo.toml"), Verdict::Keep);
         assert!(m.crosses(b"Data"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_suggestions() {
+        let on = |id: &str| Matcher::new(&Exclusions { presets: vec![id.into()], ..Exclusions::default() });
+        let browsers = on("browser-caches");
+        assert_eq!(browsers.check(b"AppData/Local/Google/Chrome/User Data/Default/Cache"), Verdict::LeaveOut);
+        assert_eq!(browsers.check(b"appdata/local/microsoft/edge/user data/Profile 1/Code Cache"), Verdict::LeaveOut);
+        assert_eq!(browsers.check(b"AppData/Local/Google/Chrome/User Data/Default/Bookmarks"), Verdict::Keep);
+        let wsl = on("wsl-disks");
+        assert_eq!(
+            wsl.check(b"AppData/Local/Packages/CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc/LocalState/ext4.vhdx"),
+            Verdict::LeaveOut
+        );
+        assert_eq!(on("vm-images").check(b"VMs/win.vhdx"), Verdict::LeaveOut);
+        assert_eq!(
+            on("app-caches").check(b"AppData/Local/Packages/Microsoft.Photos_8wekyb3d8bbwe/LocalCache"),
+            Verdict::LeaveOut
+        );
+        assert_eq!(on("steam").check(b"Games/SteamLibrary"), Verdict::LeaveOut);
+        // Every id is unique.
+        let ids: std::collections::HashSet<_> = PRESETS.iter().map(|p| p.id).collect();
+        assert_eq!(ids.len(), PRESETS.len());
     }
 }
