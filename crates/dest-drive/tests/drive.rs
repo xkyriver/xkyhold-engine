@@ -191,6 +191,28 @@ fn listings_page_and_repositories_are_found() {
 }
 
 #[test]
+fn a_missing_or_trashed_backup_is_not_recreated() {
+    let fake = Arc::new(FakeDrive::default());
+    // An empty Drive: listing finds nothing and creates nothing.
+    assert!(DriveFolder::list_repositories(&drive(&fake)).unwrap().is_empty());
+    assert!(fake.0.lock().unwrap().files.is_empty());
+    assert_eq!(DriveFolder::open_existing(drive(&fake), "gone").err().unwrap().kind(), "not-found");
+    assert!(fake.0.lock().unwrap().files.is_empty());
+    // A backup moved to the trash stays there, and nothing takes its name.
+    let dest = folder(&fake, "XkyHold-wd test");
+    dest.put(Dir::Root, "config", b"x").unwrap();
+    assert!(DriveFolder::open_existing(drive(&fake), "XkyHold-wd test").is_ok());
+    let count = |fake: &Arc<FakeDrive>| fake.0.lock().unwrap().files.len();
+    let before = count(&fake);
+    for f in fake.0.lock().unwrap().files.iter_mut().filter(|f| f.name == "XkyHold-wd test") {
+        f.trashed = true;
+    }
+    assert_eq!(DriveFolder::open_existing(drive(&fake), "XkyHold-wd test").err().unwrap().kind(), "not-found");
+    assert_eq!(count(&fake), before);
+    assert!(DriveFolder::list_repositories(&drive(&fake)).unwrap().is_empty());
+}
+
+#[test]
 fn uploads_keep_under_the_limit() {
     let fake = Arc::new(FakeDrive::default());
     let mut d = drive(&fake);

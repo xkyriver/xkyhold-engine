@@ -58,8 +58,11 @@ pub struct DriveFolder {
 
 impl DriveFolder {
     /// The repositories in the user's Drive, by folder name.
+    /// Creates nothing: without an `XkyHold` folder there are none.
     pub fn list_repositories(drive: &Drive) -> Result<Vec<String>> {
-        let app = drive.ensure_folder(APP_FOLDER, "root")?;
+        let Some(app) = drive.find_folder(APP_FOLDER, "root")? else {
+            return Ok(Vec::new());
+        };
         let mut names: Vec<String> = drive
             .list_children(&app)?
             .into_iter()
@@ -71,12 +74,27 @@ impl DriveFolder {
     }
 
     /// Opens the repository folder `XkyHold/<name>`, creating it if missing.
+    /// For a new repository; an existing one opens with [`Self::open_existing`].
     pub fn open(drive: Drive, name: &str) -> Result<Self> {
         let app = drive.ensure_folder(APP_FOLDER, "root")?;
         let repo_folder = drive.ensure_folder(name, &app)?;
+        Ok(Self::with_folder(drive, repo_folder))
+    }
+
+    /// Opens the repository folder `XkyHold/<name>` only if it exists (and
+    /// is not in the trash). Never creates anything: a backup the user
+    /// moved to the trash is not replaced by an empty folder.
+    pub fn open_existing(drive: Drive, name: &str) -> Result<Self> {
+        let missing = || Error::NotFound(format!("Google Drive backup \"{name}\""));
+        let app = drive.find_folder(APP_FOLDER, "root")?.ok_or_else(missing)?;
+        let repo_folder = drive.find_folder(name, &app)?.ok_or_else(missing)?;
+        Ok(Self::with_folder(drive, repo_folder))
+    }
+
+    fn with_folder(drive: Drive, repo_folder: String) -> Self {
         let mut state = State::default();
         state.folders.insert(Dir::Root, vec![repo_folder.clone()]);
-        Ok(Self { drive, repo_folder, state: Mutex::new(state), creating: Mutex::new(()) })
+        Self { drive, repo_folder, state: Mutex::new(state), creating: Mutex::new(()) }
     }
 
     pub fn drive(&self) -> &Drive {

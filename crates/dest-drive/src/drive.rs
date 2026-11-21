@@ -136,6 +136,15 @@ impl Drive {
 
     /// Finds a folder by name under `parent` (`root` for My Drive), creating it if missing.
     pub fn ensure_folder(&self, name: &str, parent: &str) -> Result<String> {
+        match self.find_folder(name, parent)? {
+            Some(id) => Ok(id),
+            None => self.create_folder(name, parent),
+        }
+    }
+
+    /// The folder `name` inside `parent`, if it exists and is not in the
+    /// trash. Never creates anything.
+    pub fn find_folder(&self, name: &str, parent: &str) -> Result<Option<String>> {
         let q = format!(
             "name = {} and mimeType = '{FOLDER_MIME}' and {} in parents and trashed = false",
             quote(name),
@@ -143,10 +152,7 @@ impl Drive {
         );
         let res =
             self.call(&|| Request::new("GET", format!("{API}/files?q={}&fields=files(id)&pageSize=1", enc(&q))))?;
-        if let Some(id) = res.json()["files"][0]["id"].as_str() {
-            return Ok(id.to_owned());
-        }
-        self.create_folder(name, parent)
+        Ok(res.json()["files"][0]["id"].as_str().map(String::from))
     }
 
     pub fn create_folder(&self, name: &str, parent: &str) -> Result<String> {
