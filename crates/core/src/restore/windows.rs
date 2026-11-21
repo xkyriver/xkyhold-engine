@@ -183,6 +183,13 @@ fn write_file<D: Destination + 'static>(
     written
 }
 
+/// The target to create a link with. A relative target of a Linux link
+/// (no `link`) gets `\` for `/`, which Windows needs to follow it (decision
+/// D5, FORMAT-v2-windows.md 5); every other target is written as stored.
+fn created_target(link: Option<&str>, target: &str) -> String {
+    if link.is_none() && !target.starts_with('/') { target.replace('/', "\\") } else { target.to_owned() }
+}
+
 /// A symbolic link to create once everything else is in place.
 struct PendingLink {
     dir: PathBuf,
@@ -402,8 +409,9 @@ impl<D: Destination + 'static> Restorer<'_, '_, D> {
             self.check_cancel()?;
             let Some((name, _)) = self.place(&link.dir, &link.name, false)? else { continue };
             let at = link.dir.join(&name);
+            let created = created_target(link.link.as_deref(), &link.target);
             let points_to_dir = || {
-                let target = Path::new(&link.target);
+                let target = Path::new(&created);
                 let resolved = if target.is_absolute() { target.to_path_buf() } else { link.dir.join(target) };
                 resolved.is_dir()
             };
@@ -413,10 +421,10 @@ impl<D: Destination + 'static> Restorer<'_, '_, D> {
                         let _ = std::fs::remove_dir(&at);
                     })
                 }),
-                Some("dir") => std::os::windows::fs::symlink_dir(&link.target, &at),
-                Some(_) => std::os::windows::fs::symlink_file(&link.target, &at),
-                None if points_to_dir() => std::os::windows::fs::symlink_dir(&link.target, &at),
-                None => std::os::windows::fs::symlink_file(&link.target, &at),
+                Some("dir") => std::os::windows::fs::symlink_dir(&created, &at),
+                Some(_) => std::os::windows::fs::symlink_file(&created, &at),
+                None if points_to_dir() => std::os::windows::fs::symlink_dir(&created, &at),
+                None => std::os::windows::fs::symlink_file(&created, &at),
             };
             match made {
                 Ok(()) => {
@@ -461,7 +469,18 @@ pub fn restore<D: Destination + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use super::{case_copy_name, safe_name};
+    use super::{case_copy_name, created_target, safe_name};
+
+    #[test]
+    fn relative_linux_targets_get_backslashes() {
+        assert_eq!(created_target(None, "projeto/notas.md"), "projeto\\notas.md");
+        assert_eq!(created_target(None, "../a/b"), "..\\a\\b");
+        assert_eq!(created_target(None, "notas.md"), "notas.md");
+        // Absolute Linux targets and Windows links are written as stored.
+        assert_eq!(created_target(None, "/home/ana/x"), "/home/ana/x");
+        assert_eq!(created_target(Some("file"), "a/b"), "a/b");
+        assert_eq!(created_target(Some("junction"), r"C:\Users\ana\x"), r"C:\Users\ana\x");
+    }
 
     #[test]
     fn names_windows_cannot_create() {
