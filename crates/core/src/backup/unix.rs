@@ -22,7 +22,7 @@ use crate::destination::Destination;
 use crate::pack::BlobType;
 use crate::repo::Repository;
 use crate::rules::{CACHEDIR_SIGNATURE, Matcher, Verdict};
-use crate::snapshot::{Home, Root, Snapshot, Source, Stats};
+use crate::snapshot::{Home, Root, Snapshot, Source, Stats, chosen_of};
 use crate::tree::{Change, Entry, EntryKind, Meta, Xattr};
 use crate::{Error, Result};
 
@@ -520,6 +520,7 @@ pub fn backup<D: Destination + 'static>(
                 source: Some(Source { kind: "home".into(), path: String::new() }),
                 meta: Some(root_meta),
                 left_out: Some(left_out),
+                chosen: chosen_of(options.selection.as_deref()),
             }],
             stats,
             parent: options.parent.map(|p| p.id.clone()),

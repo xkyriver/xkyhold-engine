@@ -178,6 +178,21 @@ fn an_unchanged_folder_reads_nothing_again() {
 }
 
 #[test]
+fn the_chosen_items_are_recorded() {
+    let f = fixture();
+    let held = build_home(&f.home);
+    drop(held);
+    let mut repo = new_repo();
+    let mut o = options("2026-11-21T10:00:00Z", None);
+    o.selection = Some(vec![b"Documents".to_vec(), b"readonly.txt".to_vec()]);
+    backup(&mut repo, &f.home, o, &mut |_| {}).unwrap();
+    let stored = repo.list_snapshots().unwrap().pop().unwrap();
+    let chosen: Vec<Vec<u8>> = stored.roots[0].chosen.as_ref().unwrap().iter().map(|c| c.bytes().unwrap()).collect();
+    assert_eq!(chosen, [b"Documents".to_vec(), b"readonly.txt".to_vec()]);
+    attrib(&["-r"], &f.home.join("readonly.txt"));
+}
+
+#[test]
 fn names_from_linux_are_made_safe_and_listed() {
     let f = fixture();
     let mut repo = new_repo();

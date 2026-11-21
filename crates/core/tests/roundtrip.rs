@@ -299,6 +299,14 @@ fn selection_and_rules_limit_what_is_stored() {
         .unwrap();
     let got: Vec<String> = snapshot_of(&f.out, &[]).keys().map(|k| String::from_utf8_lossy(k).into_owned()).collect();
     assert_eq!(got, [".config", ".config/app", ".config/app/secret", "Documents", "Documents/big.bin"]);
+    // The choice is recorded in the snapshot as stored (FORMAT-v2-chosen.md).
+    let stored = repo.list_snapshots().unwrap().pop().unwrap();
+    let chosen: Vec<Vec<u8>> = stored.roots[0].chosen.as_ref().unwrap().iter().map(|c| c.bytes().unwrap()).collect();
+    assert_eq!(chosen, [b"Documents".to_vec(), b".config/app/secret".to_vec()]);
+    // The whole folder records no choice.
+    let whole =
+        backup(&mut repo, &f.home, options("2026-11-14T11:00:00Z", None, &f.home.join("Disk")), &mut |_| {}).unwrap();
+    assert!(whole.roots[0].chosen.is_none());
 }
 
 #[test]

@@ -253,12 +253,18 @@ fn a_stopped_backup_is_continued_by_the_next_one() {
     let mut repo = Repository::open(dest.clone(), &credential(), one_upload()).unwrap();
     let snap = backup(&mut repo, home.path(), options("2026-01-01T00:01:00.000Z"), &mut |_| {}).unwrap();
     assert_eq!(snap.stats.files, 20);
-    let total: u64 = 20 * 3000;
+    // Against a backup of the same files from scratch, which also carries
+    // the index, tree and snapshot: comparing with the data alone left a
+    // margin of a few dozen bytes, which a longer temporary path ate.
+    let fresh = Arc::new(Flaky::default());
+    let (mut whole, _) = Repository::create(fresh, "pw", FAST, "t".into(), one_upload()).unwrap();
+    backup(&mut whole, home.path(), options("2026-01-01T00:02:00.000Z"), &mut |_| {}).unwrap();
     assert!(
-        repo.uploaded_bytes < total - sent_before / 2,
-        "sent {} again after {} were already uploaded",
+        repo.uploaded_bytes + sent_before / 2 < whole.uploaded_bytes,
+        "sent {} again after {} were already uploaded; from scratch {}",
         repo.uploaded_bytes,
-        sent_before
+        sent_before,
+        whole.uploaded_bytes
     );
     assert_restorable(&dest);
 }
